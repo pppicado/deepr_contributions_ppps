@@ -8,6 +8,7 @@ DeepR is an AI Council research application. It allows you to query a prompt whi
 - **Role-Based Interaction:** Assign a "Chairman" model to lead the synthesis while selecting specific Council Members for research and critique.
 - **Anonymous Critique:** Blind peer review between models to reduce bias.
 - **DAG Visualization:** Watch the research unfold in real-time via an interactive Node Tree.
+- **Diagnostic Orchestration (DxO):** A multi-turn debate between specialized agents (Lead Architect, Reviewer, QA) to refine complex system designs.
 - **History:** Auto-saves your sessions for later review.
 - **Secure Configuration:** Encrypted storage for your OpenRouter API Key in the Settings page.
 
