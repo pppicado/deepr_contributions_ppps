@@ -34,3 +34,10 @@
 - **Status:** Accepted
 - **Decision:** Docker Compose for orchestration.
 - **Context:** To ensure reproducible builds and easy "Quick Start" for users, the entire stack (Frontend, Backend) is containerized. This avoids "it works on my machine" issues related to Node/Python versions.
+
+## 7. Workflow-Adaptive Visualization
+- **Status:** Accepted
+- **Decision:** The UI Visualization (`NodeTree`) must adapt its rendering strategy based on the workflow type.
+    - **DAG Workflows (Council):** Use **Grouped/Topological Layouts** (Plan -> All Research -> All Critiques -> Synthesis). This emphasizes the hierarchy and parallel nature of the work.
+    - **Debate/Iterative Workflows (DxO):** Use **Chronological/Threaded Layouts** (Proposal -> Critique -> Refinement). This emphasizes the evolution of the idea over time.
+- **Context:** A single "one size fits all" visualization breaks the narrative for iterative processes like DxO, where the *order* of operations (Draft v1 -> Critique -> Draft v2) is more important than the *category* of the node.

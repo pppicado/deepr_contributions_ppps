@@ -76,7 +76,10 @@ const DxO = () => {
       instructions: r.instructions
     }));
 
-    streamCouncil(prompt, [], null, 'dxo', (event) => {
+    // Use the first role (Lead Researcher) as the primary/chairman model
+    const leadModel = roles.length > 0 ? roles[0].model : "openai/gpt-4o";
+
+    streamCouncil(prompt, [], leadModel, 'dxo', (event) => {
       if (event.type === 'status') {
         setStatus(event.message);
       } else if (event.type === 'node') {
@@ -186,12 +189,12 @@ const DxO = () => {
         </div>
       ) : (
         <div className="animate-fade-in">
-           <div className="mb-6 flex items-center justify-between">
-             <h2 className="text-2xl font-bold text-slate-200">{prompt}</h2>
-             <button onClick={() => { setIsRunning(false); setNodes([]); }} className="text-sm text-slate-500 hover:text-white">New Session</button>
-           </div>
+          <div className="mb-6 flex items-center justify-between">
+            <h2 className="text-2xl font-bold text-slate-200">{prompt}</h2>
+            <button onClick={() => { setIsRunning(false); setNodes([]); }} className="text-sm text-slate-500 hover:text-white">New Session</button>
+          </div>
 
-           <NodeTree nodes={nodes} status={status} />
+          <NodeTree nodes={nodes} status={status} />
         </div>
       )}
     </div>

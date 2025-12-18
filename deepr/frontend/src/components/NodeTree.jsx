@@ -9,13 +9,105 @@ const NodeTree = ({ nodes, status }) => {
   // 3. Research (List of findings)
   // 4. Critique (List of critiques)
   // 5. Synthesis (Final Answer)
-  
+
   // Group nodes by type
   const root = nodes.find(n => n.type === 'root'); // Not actually streamed back usually, but if we did
   const plan = nodes.find(n => n.type === 'plan');
   const research = nodes.filter(n => n.type === 'research');
   const critiques = nodes.filter(n => n.type === 'critique');
   const synthesis = nodes.find(n => n.type === 'synthesis');
+
+  // DxO Specific Nodes
+  const proposals = nodes.filter(n => n.type === 'proposal' || n.type === 'refinement');
+  const testCases = nodes.filter(n => n.type === 'test_cases');
+  const verdict = nodes.find(n => n.type === 'verdict');
+
+  // Check if this is a DxO session based on node types
+  const isDxO = proposals.length > 0 || testCases.length > 0 || verdict;
+
+  if (isDxO) {
+    // Chronological Render for DxO
+    const sortedNodes = [...nodes].sort((a, b) => a.id - b.id);
+
+    return (
+      <div className="space-y-8 pb-20">
+        {sortedNodes.map((node) => {
+          if (node.type === 'root') return null; // Skip root/prompt in tree usually
+
+          // Render based on type
+          if (node.type === 'proposal' || node.type === 'refinement') {
+            return (
+              <div key={node.id} className="animate-fade-in">
+                <div className="flex items-center space-x-2 mb-2 text-blue-400">
+                  <GitCommit size={20} />
+                  <h3 className="font-semibold text-lg">{node.type === 'proposal' ? 'Initial Proposal' : 'Refinement'}</h3>
+                  <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-400">{node.model}</span>
+                </div>
+                <div className="bg-slate-900 border-l-2 border-blue-500 p-4 rounded-r-lg text-slate-300 prose prose-invert max-w-none">
+                  <ReactMarkdown>{node.content}</ReactMarkdown>
+                </div>
+              </div>
+            );
+          }
+
+          if (node.type === 'critique') {
+            return (
+              <div key={node.id} className="animate-fade-in ml-8 border-l-2 border-slate-800 pl-4">
+                <div className="flex items-center space-x-2 mb-2 text-orange-400">
+                  <MessageSquare size={20} />
+                  <h3 className="font-semibold text-lg">Peer Critique</h3>
+                  <span className="text-xs font-bold text-orange-300 bg-orange-900/30 px-2 py-1 rounded">{node.model}</span>
+                </div>
+                <div className="bg-slate-900 border border-orange-900/30 p-4 rounded-lg text-sm text-slate-300">
+                  <ReactMarkdown>{node.content}</ReactMarkdown>
+                </div>
+              </div>
+            );
+          }
+
+          if (node.type === 'test_cases') {
+            return (
+              <div key={node.id} className="animate-fade-in ml-8 border-l-2 border-slate-800 pl-4">
+                <div className="flex items-center space-x-2 mb-2 text-red-400">
+                  <Bot size={20} />
+                  <h3 className="font-semibold text-lg">QA Test Cases</h3>
+                  <span className="text-xs font-bold text-red-300 bg-red-900/30 px-2 py-1 rounded">{node.model}</span>
+                </div>
+                <div className="bg-slate-900 border border-red-900/30 p-4 rounded-lg text-sm text-slate-300">
+                  <ReactMarkdown>{node.content}</ReactMarkdown>
+                </div>
+              </div>
+            );
+          }
+
+          if (node.type === 'verdict') {
+            return (
+              <div key={node.id} className="animate-fade-in mt-8">
+                <div className="flex items-center space-x-2 mb-2 text-green-400">
+                  <CheckCircle size={20} />
+                  <h3 className="font-semibold text-lg">Final Verdict</h3>
+                  <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-400">{node.model}</span>
+                </div>
+                <div className="bg-gradient-to-br from-slate-900 to-slate-800 border border-green-500/30 p-6 rounded-lg shadow-lg shadow-green-900/10 prose prose-invert max-w-none">
+                  <ReactMarkdown>{node.content}</ReactMarkdown>
+                </div>
+              </div>
+            );
+          }
+
+          return null;
+        })}
+
+        {/* Status Indicator */}
+        {status && status !== 'done' && (
+          <div className="flex items-center justify-center p-4 text-slate-500 animate-pulse">
+            <Clock size={16} className="mr-2" />
+            <span>{status}</span>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="space-y-8 pb-20">
@@ -47,7 +139,7 @@ const NodeTree = ({ nodes, status }) => {
                   <span className="text-xs font-bold text-purple-300 bg-purple-900/30 px-2 py-1 rounded">{node.model}</span>
                 </div>
                 <div className="text-sm text-slate-300 max-h-60 overflow-y-auto custom-scrollbar">
-                   <ReactMarkdown>{node.content}</ReactMarkdown>
+                  <ReactMarkdown>{node.content}</ReactMarkdown>
                 </div>
               </div>
             ))}
@@ -62,14 +154,14 @@ const NodeTree = ({ nodes, status }) => {
             <MessageSquare size={20} />
             <h3 className="font-semibold text-lg">Peer Critique</h3>
           </div>
-           <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
             {critiques.map(node => (
               <div key={node.id} className="bg-slate-900 border border-orange-900/30 p-4 rounded-lg">
                 <div className="flex justify-between items-center mb-2">
                   <span className="text-xs font-bold text-orange-300 bg-orange-900/30 px-2 py-1 rounded">Critic: {node.model}</span>
                 </div>
-                 <div className="text-sm text-slate-300 max-h-40 overflow-y-auto custom-scrollbar">
-                   <ReactMarkdown>{node.content}</ReactMarkdown>
+                <div className="text-sm text-slate-300 max-h-40 overflow-y-auto custom-scrollbar">
+                  <ReactMarkdown>{node.content}</ReactMarkdown>
                 </div>
               </div>
             ))}
@@ -80,7 +172,7 @@ const NodeTree = ({ nodes, status }) => {
       {/* Synthesis Section */}
       {synthesis && (
         <div className="animate-fade-in">
-           <div className="flex items-center space-x-2 mb-2 text-green-400">
+          <div className="flex items-center space-x-2 mb-2 text-green-400">
             <CheckCircle size={20} />
             <h3 className="font-semibold text-lg">Final Synthesis</h3>
             <span className="text-xs bg-slate-800 px-2 py-1 rounded text-slate-400">{synthesis.model}</span>

@@ -29,49 +29,32 @@ class DxOEngine:
         """
         Orchestrates the DxO workflow:
         Phase A: Proposal (Lead System Architect)
-        Phase B: Critique (Critical Reviewer)
-        Phase C: Defense & Refinement Loop (QA Strategist + Lead Architect)
+        Phase B: Multi-Perspective Review (Council Members)
+        Phase C: Defense & Refinement Loop (Lead Architect)
         Phase D: Convergence
         """
 
-        # Helper to find role by name
-        def get_role_model(role_name):
-            for r in roles:
-                if r['name'] == role_name:
-                    return r['model']
-            # Fallback
-            return roles[0]['model'] if roles else "gpt-4o"
+        if not roles:
+             # Just in case
+             yield json.dumps({'type': 'error', 'message': 'No roles defined!'})
+             return
 
-        def get_role_instructions(role_name):
-            for r in roles:
-                if r['name'] == role_name:
-                    return r.get('instructions', "")
-            return ""
-
-        lead_architect_model = get_role_model("Lead Researcher") # Assuming mapped from UI "Lead Researcher" -> Lead Architect logic
-        # Or better, match strictly what UI sends.
-        # UI Mockup shows "Lead Researcher", "Critical Reviewer", "Domain Expert".
-        # But Prompt description says: "Lead System Architect", "Critical Reviewer", "QA Strategist".
-        # I should probably support flexible roles, but Identify key actors.
-        # "Critical Reviewer" is mandatory.
-        # "Lead Researcher" or "Lead Architect" is likely the proposer.
-        # "QA Strategist" might be mapped to "Domain Expert" or implicitly added?
-        # The prompt says: "The Orchestrator activates the Lead System Architect... It manages a debate between the roles you defined."
-        # AND "Roles of the Agents... QA Strategist...".
-        # I will assume the UI sends the roles config, and I should map them or use them.
-        # If the user defines "Lead Researcher", I use that as the Proposer.
-        # If "Critical Reviewer" is defined, I use that as the Critic.
-        # If "Domain Expert" is defined, maybe they chime in?
-        # The prompt hardcodes: Lead System Architect, Critical Reviewer, QA Strategist.
-        # I should probably map the UI roles to these slots if possible, or just use the first role as Proposer, finding "Critical Reviewer" by name for Critique.
-
+        # 1. Identify Roles
+        # Proposer is the first role or one named "Lead..."
         proposer_role = next((r for r in roles if "Lead" in r['name'] or "Architect" in r['name'] or "Researcher" in r['name']), roles[0])
+        
+        # Identify Reviewers (Everyone else)
+        # We filter out the proposer from the reviewer list to avoid self-critique (unless explicit?)
+        # For simplicity, everyone else is a reviewer.
+        reviewers = [r for r in roles if r['name'] != proposer_role['name']]
+
+        # Critic and QA are special roles that trigger specific actions, but they are also reviewers.
         critic_role = next((r for r in roles if "Critical Reviewer" in r['name']), None)
         qa_role = next((r for r in roles if "QA" in r['name'] or "Quality" in r['name']), None)
 
-        if not critic_role:
-            yield json.dumps({'type': 'error', 'message': 'Critical Reviewer role is missing!'})
-            return
+        if not reviewers and len(roles) > 1:
+             # If filter by name failed but we have other roles, treat them as reviewers
+             reviewers = roles[1:]
 
         # Phase A: Proposal
         yield json.dumps({'type': 'status', 'message': f'Phase A: {proposer_role["name"]} is drafting the proposal...'})
@@ -100,79 +83,132 @@ class DxOEngine:
 
         while iteration < max_iterations and confidence_score < 85:
             iteration += 1
-            yield json.dumps({'type': 'status', 'message': f'Phase B: Critical Reviewer is analyzing (Loop {iteration})...'})
+            yield json.dumps({'type': 'status', 'message': f'Phase B: Council Review (Loop {iteration})...'})
 
-            # Phase B: Critique
-            critique_prompt = f"""
-            You are the {critic_role['name']}.
-            Instructions: {critic_role.get('instructions', 'TEAR DOWN the proposal. Scan for risks, flaws, complexity.')}
+            # Collect all feedback content for the proposer to see
+            feedback_collection = []
+            
+            # Run all reviewers in parallel (Phase B)
+            # We create a coroutine for each reviewer
+            async def run_reviewer(role):
+                is_critic = role.get('name') == "Critical Reviewer"
+                is_qa = "QA" in role.get('name') or "Quality" in role.get('name')
 
-            Review the following draft:
+                review_prompt = ""
+                node_type = "critique" # Default type for everyone
 
-            {draft_content}
+                if is_critic:
+                     review_prompt = f"""
+                     You are the {role['name']}.
+                     Instructions: {role.get('instructions', 'TEAR DOWN the proposal. Scan for risks, flaws, complexity.')}
+                     
+                     Review the following draft:
+                     {draft_content}
+                     
+                     Output a Critique Report.
+                     IMPORTANT: You must include a "Confidence Score" (0-100) indicating your confidence in the design's safety and completeness.
+                     Format your response as JSON or clearly structured text where "Score: X" can be parsed.
+                     """
+                elif is_qa:
+                     node_type = "test_cases"
+                     review_prompt = f"""
+                     You are the {role['name']}.
+                     Instructions: {role.get('instructions', 'Generate test cases.')}
+                     
+                     Draft:
+                     {draft_content}
+                     
+                     Generate specific test cases to validate this design.
+                     """
+                else:
+                     # General Council Member
+                     review_prompt = f"""
+                     You are the {role['name']}.
+                     Instructions: {role.get('instructions', 'Provide your domain-specific perspective.')}
+                     
+                     Review the following draft:
+                     {draft_content}
+                     
+                     Provide your analysis, pointed critiques, or suggestions based on your expertise.
+                     """
 
-            Output a Critique Report.
-            IMPORTANT: You must include a "Confidence Score" (0-100) indicating your confidence in the design's safety and completeness.
-            Format your response as JSON or clearly structured text where "Score: X" can be parsed.
-            """
+                response = await self.client.chat_completion(
+                    model=role['model'],
+                    messages=[{"role": "user", "content": review_prompt}]
+                )
+                content = response.choices[0].message.content
+                
+                # Extract score if critic
+                score = 0
+                if is_critic:
+                    score_match = re.search(r'(?:Confidence )?Score:\s*(\d+)', content, re.IGNORECASE)
+                    if score_match:
+                        score = int(score_match.group(1))
+                
+                # Create Node
+                # We use 'critique' type for general reviewers so frontend renders them in the critique list
+                # We use 'test_cases' for QA
+                new_node = await self.create_node(conversation_id, draft_node.id, node_type, content, model_name=role['model'])
+                
+                return {
+                    'role': role['name'],
+                    'content': content,
+                    'score': score,
+                    'node': new_node,
+                    'type': node_type
+                }
 
-            response = await self.client.chat_completion(
-                model=critic_role['model'],
-                messages=[{"role": "user", "content": critique_prompt}]
-            )
-            critique_content = response.choices[0].message.content
-
-            # Parse Score
-            score_match = re.search(r'(?:Confidence )?Score:\s*(\d+)', critique_content, re.IGNORECASE)
-            if score_match:
-                confidence_score = int(score_match.group(1))
+            # Execute parallel
+            tasks = [run_reviewer(r) for r in reviewers]
+            if tasks:
+                results = await asyncio.gather(*tasks)
             else:
-                # Default low if not found
-                confidence_score = 0
+                results = []
 
-            critique_node = await self.create_node(conversation_id, draft_node.id, "critique", critique_content, model_name=critic_role['model'])
-            yield json.dumps({'type': 'node', 'node': {'id': critique_node.id, 'type': 'critique', 'content': critique_content, 'model': critique_node.model_name, 'score': confidence_score}})
+            # Process Results
+            current_loop_score = 0
+            has_critic = False
+
+            for res in results:
+                feedback_collection.append(f"--- Feedback from {res['role']} ---\n{res['content']}\n")
+                
+                # Emit to frontend
+                yield json.dumps({'type': 'node', 'node': {
+                    'id': res['node'].id, 
+                    'type': res['type'], 
+                    'content': res['content'], 
+                    'model': res['node'].model_name,
+                    'score': res['score'] if res['role'] == "Critical Reviewer" else 0
+                }})
+
+                if res['role'] == "Critical Reviewer":
+                    current_loop_score = res['score']
+                    has_critic = True
+
+            # If no explicit critic, maybe average scores? or just assume low confidence to force iteration?
+            # Or if no critics exist, we might break automatically?
+            if has_critic:
+                confidence_score = current_loop_score
+            else:
+                # If no critic, we can't judge "85%". 
+                # If we have iterations left, we iterate. If it's 3rd loop, we stop.
+                # Let's set a default 'progress' score to allow loops but not infinite.
+                confidence_score = 50 + (iteration * 15) # Artificial progress if no critic
 
             if confidence_score >= 85:
                 break
 
             # Phase C: Refinement
-            # QA Strategist (Optional if not defined, maybe Reviewer acts as one or we skip?)
-            # Prompt says "QA Strategist looks at Draft_v1 and Critique. Generates test cases."
-            qa_content = ""
-            if qa_role:
-                yield json.dumps({'type': 'status', 'message': f'Phase C: {qa_role["name"]} is generating test cases...'})
-                qa_prompt = f"""
-                You are the {qa_role['name']}.
-                Instructions: {qa_role.get('instructions', 'Generate test cases that would prove the flaws exist.')}
-
-                Draft:
-                {draft_content}
-
-                Critique:
-                {critique_content}
-
-                Generate test cases.
-                """
-                response = await self.client.chat_completion(
-                    model=qa_role['model'],
-                    messages=[{"role": "user", "content": qa_prompt}]
-                )
-                qa_content = response.choices[0].message.content
-                qa_node = await self.create_node(conversation_id, critique_node.id, "test_cases", qa_content, model_name=qa_role['model'])
-                yield json.dumps({'type': 'node', 'node': {'id': qa_node.id, 'type': 'test_cases', 'content': qa_content, 'model': qa_node.model_name}})
-
-            # Rebuttal/Fix (Lead Architect)
             yield json.dumps({'type': 'status', 'message': f'Phase C: {proposer_role["name"]} is refining the design...'})
+
+            all_feedback = "\n".join(feedback_collection)
 
             refine_prompt = f"""
             You are the {proposer_role['name']}.
-            Your previous design scored {confidence_score}%.
+            Your previous design received a score of {confidence_score}%.
 
-            Critique:
-            {critique_content}
-
-            {f"Test Cases from QA:{qa_content}" if qa_content else ""}
+            Feedback from the Council:
+            {all_feedback}
 
             Fix the issues identified. Provide a new version (Draft_v{iteration+1}).
             """
@@ -182,7 +218,7 @@ class DxOEngine:
                 messages=[{"role": "user", "content": refine_prompt}]
             )
             draft_content = response.choices[0].message.content
-            draft_node = await self.create_node(conversation_id, critique_node.id, "refinement", draft_content, model_name=proposer_role['model'])
+            draft_node = await self.create_node(conversation_id, draft_node.id, "refinement", draft_content, model_name=proposer_role['model'])
             yield json.dumps({'type': 'node', 'node': {'id': draft_node.id, 'type': 'refinement', 'content': draft_content, 'model': draft_node.model_name}})
 
         # Final Verdict
