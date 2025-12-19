@@ -24,7 +24,15 @@ docker compose logs -f
 docker compose up --build -d
 ```
 
-### 2. Manual Setup (Local)
+### 2. Stable Mode (No Auto-Reload)
+
+To run the application without auto-restarts (useful for long-running research tasks that shouldn't be interrupted by file edits):
+
+```bash
+docker compose -f docker-compose.yml -f docker-compose.stable.yml up --build
+```
+
+### 3. Manual Setup (Local)
 
 If you prefer running outside Docker:
 
