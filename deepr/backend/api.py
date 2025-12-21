@@ -11,12 +11,16 @@ from database import get_db
 from models import User, UserSettings, Conversation, NodeType, Node
 from auth import get_current_user
 from encryption import decrypt_key
-from openrouter_service import OpenRouterClient
+from openrouter_service import OpenRouterClient, AVAILABLE_MODELS
 from council_engine import CouncilEngine
 from engines.dxo_engine import DxOEngine
 from sqlalchemy import desc
 
 router = APIRouter()
+
+@router.get("/models")
+async def get_models(current_user: User = Depends(get_current_user)):
+    return AVAILABLE_MODELS
 
 class CouncilRequest(BaseModel):
     prompt: str
@@ -197,3 +201,130 @@ async def get_conversation(
     )
     nodes = result.scalars().all()
     return {"conversation": conversation, "nodes": nodes}
+
+class SuperChatRequest(BaseModel):
+    prompt: str
+    conversation_id: int = None
+    council_members: List[str]
+    chairman_model: str
+
+@router.post("/superchat/chat")
+async def superchat_chat(
+    request: SuperChatRequest,
+    current_user: User = Depends(get_current_user),
+    db: AsyncSession = Depends(get_db)
+):
+    # Verify API Key
+    result = await db.execute(select(UserSettings).where(UserSettings.user_id == current_user.id))
+    settings = result.scalars().first()
+    if not settings or not settings.encrypted_api_key:
+        raise HTTPException(status_code=400, detail="No API Key")
+
+    api_key = decrypt_key(settings.encrypted_api_key, current_user.id)
+
+    conversation_id = request.conversation_id
+    parent_node_id = None
+    last_synthesis_content = ""
+
+    if conversation_id:
+        # Verify ownership
+        result = await db.execute(
+            select(Conversation).where(
+                Conversation.id == conversation_id,
+                Conversation.user_id == current_user.id
+            )
+        )
+        conversation = result.scalars().first()
+        if not conversation:
+            raise HTTPException(status_code=404, detail="Conversation not found")
+
+        # Find last synthesis node
+        result = await db.execute(
+            select(Node)
+            .where(Node.conversation_id == conversation_id, Node.type == NodeType.SYNTHESIS.value)
+            .order_by(desc(Node.id))
+            .limit(1)
+        )
+        last_synthesis_node = result.scalars().first()
+        if last_synthesis_node:
+            parent_node_id = last_synthesis_node.id
+            last_synthesis_content = last_synthesis_node.content
+    else:
+        # Create new conversation
+        conversation = Conversation(
+            user_id=current_user.id,
+            title=request.prompt[:50],
+            method="superchat"
+        )
+        db.add(conversation)
+        await db.commit()
+        await db.refresh(conversation)
+        conversation_id = conversation.id
+
+    # Create User Node (Root for this turn)
+    user_node = Node(
+        conversation_id=conversation_id,
+        parent_id=parent_node_id,
+        type=NodeType.ROOT.value, # Using ROOT as the type for user input in each turn
+        content=request.prompt,
+        model_name="user"
+    )
+    db.add(user_node)
+    await db.commit()
+    await db.refresh(user_node)
+
+    async def event_stream():
+        try:
+            client = OpenRouterClient(api_key)
+            engine = CouncilEngine(db, current_user, client)
+
+            yield f"data: {json.dumps({'type': 'start', 'conversation_id': conversation_id})}\n\n"
+
+            # Send User Node to client immediately
+            yield f"data: {json.dumps({'type': 'node', 'node': {'id': user_node.id, 'parent_id': user_node.parent_id, 'type': 'root', 'content': user_node.content, 'model': user_node.model_name}})}\n\n"
+
+            # Construct Ensemble Prompt
+            ensemble_prompt = request.prompt
+            if last_synthesis_content:
+                ensemble_prompt = f"Context from previous turn:\n{last_synthesis_content}\n\nNew Request: {request.prompt}"
+
+            # We treat the user_node as the root for this turn.
+            # However, `run_ensemble_research` uses `root_node.content`.
+            # We want to use `ensemble_prompt` but `run_ensemble_research` reads from node.
+            # We can create a temporary object or modify `run_ensemble_research` to accept prompt override.
+            # Or simpler: Just create a dummy node object in memory with the combined content?
+            # Or better: Pass the combined prompt to `run_ensemble_research`.
+            # Checking `council_engine.py`: `prompt = f'... user has asked: "{root_node.content}" ...'`
+            # So I should probably just modify `run_ensemble_research` to take an optional `prompt_override`.
+            # OR I can just create a fake node object with the combined content.
+
+            class MockNode:
+                def __init__(self, id, content):
+                    self.id = id
+                    self.content = content
+
+            mock_root = MockNode(user_node.id, ensemble_prompt)
+
+            # 1. Research
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Council members are researching...'})}\n\n"
+            research_nodes = await engine.run_ensemble_research(conversation_id, mock_root, request.council_members)
+            for node in research_nodes:
+                 yield f"data: {json.dumps({'type': 'node', 'node': {'id': node.id, 'parent_id': node.parent_id, 'type': 'research', 'content': node.content, 'model': node.model_name}})}\n\n"
+
+            # 2. Synthesis
+            yield f"data: {json.dumps({'type': 'status', 'message': 'Chairman is synthesizing...'})}\n\n"
+            # Note: run_ensemble_synthesis uses root_node.content for context.
+            synthesis_node = await engine.run_ensemble_synthesis(conversation_id, mock_root, research_nodes, request.chairman_model)
+            yield f"data: {json.dumps({'type': 'node', 'node': {'id': synthesis_node.id, 'parent_id': synthesis_node.parent_id, 'type': 'synthesis', 'content': synthesis_node.content, 'model': synthesis_node.model_name}})}\n\n"
+
+            yield f"data: {json.dumps({'type': 'done'})}\n\n"
+
+        except Exception as e:
+            import traceback
+            import logging
+            error_msg = str(e)
+            error_trace = traceback.format_exc()
+            logging.error(f"Error in superchat stream: {error_trace}")
+            yield f"data: {json.dumps({'type': 'error', 'message': error_msg})}\n\n"
+
+    return StreamingResponse(event_stream(), media_type="text/event-stream")

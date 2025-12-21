@@ -45,6 +45,74 @@ export const getConversation = async (id) => {
   return response.data;
 };
 
+export const fetchModels = async () => {
+  const response = await api.get('/models');
+  return response.data;
+};
+
+export const streamSuperChat = (prompt, conversationId, councilMembers, chairmanModel, onEvent) => {
+  const token = localStorage.getItem('token');
+
+  fetch(`${API_URL}/superchat/chat`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'Authorization': `Bearer ${token}`
+    },
+    body: JSON.stringify({
+      prompt,
+      conversation_id: conversationId,
+      council_members: councilMembers,
+      chairman_model: chairmanModel
+    })
+  }).then(async response => {
+    if (!response.ok) {
+      const errorText = await response.text();
+      throw new Error(`HTTP ${response.status}: ${errorText}`);
+    }
+
+    if (!response.body) {
+      throw new Error('Response body is null');
+    }
+
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+
+        buffer += decoder.decode(value, { stream: true });
+        const lines = buffer.split('\n');
+        buffer = lines.pop();
+
+        for (const line of lines) {
+          if (line.trim() === '') continue;
+          if (line.startsWith('data: ')) {
+            try {
+              const data = JSON.parse(line.substring(6));
+              onEvent(data);
+              if (data.type === 'error') return;
+            } catch (e) {
+              console.error("Error parsing SSE data", e, line);
+            }
+          }
+        }
+      }
+    } catch (streamError) {
+      console.error("Error reading stream", streamError);
+      onEvent({ type: 'error', message: `Stream error: ${streamError.message}` });
+    } finally {
+      reader.releaseLock();
+    }
+  }).catch(err => {
+    console.error("Network/Request error", err);
+    onEvent({ type: 'error', message: err.message || 'Network error occurred' });
+  });
+};
+
 export const streamCouncil = (prompt, councilMembers, chairmanModel, method, onEvent, roles = [], maxIterations = 3) => {
   const token = localStorage.getItem('token');
   

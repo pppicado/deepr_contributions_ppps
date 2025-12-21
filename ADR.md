@@ -57,3 +57,16 @@
 3. Review migration script.
 4. Apply local: `alembic upgrade head`.
 5. Commit migration file and models.
+
+## 9. Shared Model Configuration
+- **Status:** Accepted
+- **Decision:** Single Source of Truth for Models via API.
+- **Context:** To maintain consistency between frontend and backend and avoid duplication (DRY), the list of available models is defined in the backend (`openrouter_service.py`) and exposed via a `GET /api/models` endpoint. The frontend fetches this list dynamically.
+
+## 10. SuperChat Architecture
+- **Status:** Accepted
+- **Decision:** Human-in-the-Loop Ensemble (Sequential Tree).
+- **Context:** "SuperChat" extends the Ensemble methodology by allowing recursive user input.
+    - **Flow:** User Input -> Ensemble Research (Parallel) -> Synthesis -> User Input (Refinement) -> Ensemble Research...
+    - **State:** Each turn's "Research" phase uses the previous "Synthesis" + "New User Input" as context. Full history is not re-fed to the context window to optimize for relevance and cost.
+    - **Persistence:** SuperChat conversations are stored as a continuous tree in the `nodes` table, retrievable and continuable via the UI.

@@ -6,13 +6,13 @@ import DxO from './components/DxO';
 import Settings from './components/Settings';
 import History from './components/History';
 import HistoryDetail from './components/HistoryDetail';
+import SuperChat from './components/SuperChat';
 import Sidebar from './components/Sidebar';
 import ComingSoon from './components/ComingSoon';
 import { checkAuth } from './api';
 
 const ProtectedRoute = ({ children }) => {
   const [isAuthenticated, setIsAuthenticated] = useState(null);
-  const navigate = useNavigate();
 
   useEffect(() => {
     checkAuth()
@@ -43,7 +43,8 @@ function App() {
         <Route path="/history" element={<ProtectedRoute><History /></ProtectedRoute>} />
         <Route path="/history/:id" element={<ProtectedRoute><HistoryDetail /></ProtectedRoute>} />
         <Route path="/settings" element={<ProtectedRoute><Settings /></ProtectedRoute>} />
-        <Route path="/super-chat" element={<ProtectedRoute><ComingSoon title="Super Chat" description="Collaborative chat with the Council models." /></ProtectedRoute>} />
+        <Route path="/super-chat" element={<ProtectedRoute><SuperChat /></ProtectedRoute>} />
+        <Route path="/super-chat/:id" element={<ProtectedRoute><SuperChat /></ProtectedRoute>} />
         <Route path="/frontier" element={<ProtectedRoute><ComingSoon title="Frontier" description="Experimental features and beta models." /></ProtectedRoute>} />
         <Route path="*" element={<Navigate to="/" />} />
       </Routes>

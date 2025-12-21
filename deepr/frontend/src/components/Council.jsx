@@ -1,24 +1,8 @@
 import React, { useState } from 'react';
 import { streamCouncil } from '../api';
 import NodeTree from './NodeTree';
-import { Send, Zap } from 'lucide-react';
-
-const MODELS = [
-  // Future/Requested
-  { id: "openai/gpt-5.2", name: "GPT-5.2", desc: "OpenAI Flagship" },
-  { id: "anthropic/claude-4.5-opus", name: "Claude 4.5 Opus", desc: "Anthropic Flagship" },
-  { id: "google/gemini-3-pro-preview", name: "Gemini 3 Pro", desc: "Google Flagship" },
-  // Real/Prior
-  { id: "openai/gpt-4o", name: "GPT-4o", desc: "Prior Flagship" },
-  { id: "anthropic/claude-3-opus", name: "Claude 3 Opus", desc: "Prior Flagship" },
-  { id: "google/gemini-2.5-flash", name: "Gemini 2.5 Flash", desc: "Prior Flagship" },
-  // Others
-  { id: "meta-llama/llama-3-70b-instruct", name: "Llama 3 70B", desc: "Meta Flagship" },
-  { id: "deepseek/deepseek-v3.2", name: "DeepSeek v3.2", desc: "Deepseek Flagship" },
-  { id: "x-ai/grok-4", name: "Grok 4", desc: "xAI Flagship" },
-  { id: "openai/gpt-3.5-turbo", name: "GPT-3.5 Turbo", desc: "Fast & Efficient" },
-  { id: "anthropic/claude-3-haiku", name: "Claude 3 Haiku", desc: "Speed Optimized" },
-];
+import { ModelGrid, ChairmanSelect } from './ModelSelector';
+import { useModels } from '../hooks';
 
 const Council = () => {
   const [prompt, setPrompt] = useState('');
@@ -28,6 +12,8 @@ const Council = () => {
   const [isResearching, setIsResearching] = useState(false);
   const [nodes, setNodes] = useState([]);
   const [status, setStatus] = useState('');
+
+  const { models, loading, error } = useModels();
 
   const toggleModel = (id) => {
     setSelectedModels(prev =>
@@ -40,9 +26,6 @@ const Council = () => {
     setIsResearching(true);
     setNodes([]);
     setStatus('Initializing...');
-
-    // Add User Node locally for visuals (though backend does it too)
-    // setNodes([{ type: 'root', content: prompt, id: 'root' }]);
 
     streamCouncil(prompt, selectedModels, chairman, method, (event) => {
       if (event.type === 'status') {
@@ -58,6 +41,9 @@ const Council = () => {
       }
     });
   };
+
+  if (loading) return <div className="p-8 text-center text-slate-400">Loading models...</div>;
+  if (error) return <div className="p-8 text-center text-red-400">Error loading models: {error.message}</div>;
 
   return (
     <div className="max-w-5xl mx-auto">
@@ -112,40 +98,12 @@ const Council = () => {
               <span className="text-sm text-slate-400">Select 2+ models for best results</span>
             </div>
 
-            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-              {MODELS.map(model => (
-                <div
-                  key={model.id}
-                  onClick={() => toggleModel(model.id)}
-                  className={`cursor-pointer p-4 rounded-lg border flex items-start space-x-3 transition ${selectedModels.includes(model.id)
-                      ? 'bg-blue-900/20 border-blue-500'
-                      : 'bg-slate-900 border-slate-800 hover:border-slate-700'
-                    }`}
-                >
-                  <div className={`w-5 h-5 rounded border flex items-center justify-center mt-1 ${selectedModels.includes(model.id) ? 'bg-blue-600 border-blue-600' : 'border-slate-600'
-                    }`}>
-                    {selectedModels.includes(model.id) && <Zap size={12} className="text-white" />}
-                  </div>
-                  <div>
-                    <div className="font-semibold text-sm">{model.name}</div>
-                    <div className="text-xs text-slate-500">{model.desc}</div>
-                  </div>
-                </div>
-              ))}
-            </div>
+            <ModelGrid models={models} selectedModels={selectedModels} onToggle={toggleModel} />
           </div>
 
           <div>
             <h2 className="text-xl font-bold mb-4">Chairman Model</h2>
-            <select
-              value={chairman}
-              onChange={(e) => setChairman(e.target.value)}
-              className="w-full bg-slate-900 border border-slate-800 rounded-lg p-3 text-white focus:outline-none focus:ring-2 focus:ring-blue-500"
-            >
-              {MODELS.map(model => (
-                <option key={model.id} value={model.id}>{model.name} ({model.desc})</option>
-              ))}
-            </select>
+            <ChairmanSelect models={models} value={chairman} onChange={setChairman} />
           </div>
 
           <button
