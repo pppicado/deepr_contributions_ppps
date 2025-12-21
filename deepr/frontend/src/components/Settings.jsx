@@ -46,8 +46,9 @@ const SettingsPage = () => {
 
         <form onSubmit={handleSave} className="space-y-4">
           <div>
-            <label className="block text-slate-300 mb-1">API Key</label>
+            <label htmlFor="apiKey" className="block text-slate-300 mb-1">API Key</label>
             <input
+              id="apiKey"
               type="password"
               value={apiKey}
               onChange={(e) => setApiKey(e.target.value)}

@@ -132,6 +132,9 @@ async def test_superchat(client, auth_token):
 
     print("Starting SuperChat request...")
     async with client.stream("POST", "/superchat/chat", json=payload, headers=headers, timeout=60.0) as response:
+        if response.status_code != 200:
+            content = await response.aread()
+            print(f"Request failed: {content}")
         assert response.status_code == 200
         events = []
         async for line in response.aiter_lines():

@@ -2,7 +2,7 @@ from fastapi import APIRouter, Depends, HTTPException, Body
 from fastapi.responses import StreamingResponse
 from sqlalchemy.ext.asyncio import AsyncSession
 from sqlalchemy import select
-from typing import List
+from typing import List, Optional
 import json
 import asyncio
 from pydantic import BaseModel
@@ -204,7 +204,7 @@ async def get_conversation(
 
 class SuperChatRequest(BaseModel):
     prompt: str
-    conversation_id: int = None
+    conversation_id: Optional[int] = None
     council_members: List[str]
     chairman_model: str
 

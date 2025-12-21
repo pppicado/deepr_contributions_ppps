@@ -117,6 +117,8 @@ def test_superchat_ui_flow():
         # 7. Check History
         page.click("a[href='/history']")
         # Should see "Tell me a short joke"
-        expect(page.get_by_text("Tell me a short joke", exact=False)).to_be_visible()
-        # Should see "SuperChat" badge
-        expect(page.get_by_text("SuperChat")).to_be_visible()
+        # Use class 'group' which is on the row div
+        row = page.locator("div.group", has_text="Tell me a short joke").first
+        expect(row).to_be_visible()
+        # Should see "SuperChat" badge within that row. Use .first to be safe if multiple badges (unlikely in row but safe)
+        expect(row.get_by_text("SuperChat").first).to_be_visible()
