@@ -58,9 +58,9 @@ async def auth_token(client, db_session):
 
     # Add settings with API key
     import os
-    api_key = os.getenv("OPENROUTER_API_KEY")
+    api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPEN_ROUTER_KEY")
     if not api_key:
-        pytest.fail("OPENROUTER_API_KEY environment variable not set")
+        pytest.skip("OPENROUTER_API_KEY environment variable not set")
 
     encrypted_key = encrypt_key(api_key, user.id)
     settings = UserSettings(user_id=user.id, encrypted_api_key=encrypted_key)
@@ -115,6 +115,69 @@ async def test_ensemble_method(client, auth_token):
         print("Synthesis Content:", synthesis_nodes[0]['content'])
 
         assert "Paris" in synthesis_nodes[0]['content']
+
+@pytest.mark.asyncio
+async def test_superchat(client, auth_token):
+    headers = {"Authorization": f"Bearer {auth_token}"}
+
+    # 1. Start Session
+    payload = {
+        "prompt": "What is 2+2?",
+        "council_members": ["openai/gpt-3.5-turbo"],
+        "chairman_model": "openai/gpt-3.5-turbo",
+        "conversation_id": None
+    }
+
+    conversation_id = None
+
+    print("Starting SuperChat request...")
+    async with client.stream("POST", "/superchat/chat", json=payload, headers=headers, timeout=60.0) as response:
+        if response.status_code != 200:
+            content = await response.aread()
+            print(f"Request failed: {content}")
+        assert response.status_code == 200
+        events = []
+        async for line in response.aiter_lines():
+            if line.startswith("data: "):
+                data = json.loads(line[6:])
+                events.append(data)
+                if data['type'] == 'start':
+                    conversation_id = data['conversation_id']
+                if data['type'] == 'error':
+                    print(f"Error from server: {data['message']}")
+
+    assert conversation_id is not None
+    types = [e['type'] for e in events]
+    assert 'start' in types
+    assert 'node' in types
+    assert 'done' in types
+
+    # Verify User Node was sent
+    user_nodes = [e for e in events if e.get('type') == 'node' and e['node']['type'] == 'root']
+    assert len(user_nodes) == 1
+    assert user_nodes[0]['node']['content'] == "What is 2+2?"
+
+    # 2. Follow up
+    payload['conversation_id'] = conversation_id
+    payload['prompt'] = "Multiply it by 2."
+
+    print("Sending follow-up...")
+    async with client.stream("POST", "/superchat/chat", json=payload, headers=headers, timeout=60.0) as response:
+        assert response.status_code == 200
+        events = []
+        async for line in response.aiter_lines():
+             if line.startswith("data: "):
+                data = json.loads(line[6:])
+                events.append(data)
+
+    types = [e['type'] for e in events]
+    assert 'node' in types
+    assert 'done' in types
+
+    # Verify User Node for turn 2
+    user_nodes = [e for e in events if e.get('type') == 'node' and e['node']['type'] == 'root']
+    assert len(user_nodes) == 1
+    assert user_nodes[0]['node']['content'] == "Multiply it by 2."
 
 @pytest.mark.asyncio
 async def test_dag_method(client, auth_token):

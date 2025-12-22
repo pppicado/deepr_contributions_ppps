@@ -1,0 +1,25 @@
+# SuperChat Implementation Plan
+
+- [x] Documentation & Preparation
+    - [x] Create `plan-superchat.md`
+    - [x] Update `ADR.md`
+- [x] Backend: Shared Models API
+    - [x] Add `GET /api/models` to `deepr/backend/api.py`
+- [x] Frontend: Refactor Model Selection (DRY)
+    - [x] Add `fetchModels` to `deepr/frontend/src/api.js`
+    - [x] Create `deepr/frontend/src/components/ModelSelector.jsx`
+    - [x] Refactor `deepr/frontend/src/components/Council.jsx` to use `ModelSelector`
+- [x] Backend: SuperChat Logic
+    - [x] Add `POST /api/superchat/chat` to `deepr/backend/api.py`
+    - [x] Implement context handling (linking to previous synthesis)
+    - [x] Implement ensemble stream (Research -> Synthesis)
+- [x] Frontend: SuperChat Component
+    - [x] Add `streamSuperChat` to `deepr/frontend/src/api.js`
+    - [x] Create `deepr/frontend/src/components/SuperChat.jsx`
+    - [x] Implement chat loop and history loading
+- [x] Frontend: Integration & History
+    - [x] Update `deepr/frontend/src/App.jsx`
+    - [x] Update `deepr/frontend/src/components/History.jsx`
+- [x] Pre-Commit & Verification
+    - [x] Backend Tests
+    - [x] Frontend Verification

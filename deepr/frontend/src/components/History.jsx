@@ -34,7 +34,13 @@ const History = () => {
           {conversations.map(conv => (
             <div 
               key={conv.id}
-              onClick={() => navigate(`/history/${conv.id}`)}
+              onClick={() => {
+                if (conv.method === 'superchat') {
+                  navigate(`/super-chat/${conv.id}`);
+                } else {
+                  navigate(`/history/${conv.id}`);
+                }
+              }}
               className="bg-slate-900 border border-slate-800 p-4 rounded-lg hover:border-blue-500 cursor-pointer transition flex justify-between items-center group"
             >
               <div>
@@ -42,8 +48,14 @@ const History = () => {
                   {conv.title || "Untitled Research"}
                 </h3>
                 <div className="flex items-center text-xs text-slate-500 mt-1 space-x-2">
-                   <span className={`px-1.5 py-0.5 rounded ${conv.method === 'ensemble' ? 'bg-purple-900 text-purple-200' : 'bg-blue-900 text-blue-200'}`}>
-                      {conv.method === 'ensemble' ? 'Ensemble' : 'DAG'}
+                   <span className={`px-1.5 py-0.5 rounded ${
+                     conv.method === 'ensemble' ? 'bg-purple-900 text-purple-200' :
+                     conv.method === 'superchat' ? 'bg-indigo-900 text-indigo-200' :
+                     'bg-blue-900 text-blue-200'
+                   }`}>
+                      {conv.method === 'ensemble' ? 'Ensemble' :
+                       conv.method === 'superchat' ? 'SuperChat' :
+                       'DAG'}
                    </span>
                    <span>•</span>
                    <span>{new Date(conv.created_at).toLocaleDateString()}</span>
