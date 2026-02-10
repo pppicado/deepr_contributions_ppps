@@ -187,14 +187,26 @@ class OpenRouterClient:
                                 content_array.append({
                                     "type": "file",
                                     "file": {
-                                        "url": f"data:{att.mime_type};base64,{base64_data}"
+                                        "filename": getattr(att, 'filename', 'document.pdf'),
+                                        "file_data": f"data:{att.mime_type};base64,{base64_data}"
                                     }
                                 })
                             elif att.file_type == 'audio':
+                                # Map mime_type to format (mp3 or wav typically)
+                                audio_format = 'mp3'
+                                if 'wav' in att.mime_type:
+                                    audio_format = 'wav'
+                                elif 'ogg' in att.mime_type:
+                                    audio_format = 'oga' # OpenAI uses 'oga' for ogg? or 'ogg'. OpenRouter docs say 'ogg' supported but OpenAI 'input_audio' spec often asks for 'wav' or 'mp3'.
+                                    # Let's fallback to 'wav' if unsure or keep 'mp3' as safe default if transcoded.
+                                    # Actually, let's just use the subtype.
+                                    audio_format = att.mime_type.split('/')[-1]
+
                                 content_array.append({
-                                    "type": "audio_url",
-                                    "audio_url": {
-                                        "url": f"data:{att.mime_type};base64,{base64_data}"
+                                    "type": "input_audio",
+                                    "input_audio": {
+                                        "data": base64_data, # Raw base64, no data: prefix
+                                        "format": audio_format
                                     }
                                 })
                             elif att.file_type == 'video':
