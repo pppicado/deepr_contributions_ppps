@@ -11,6 +11,12 @@ from fastapi import HTTPException
 # Global cache for models (per user)
 _CACHED_MODELS_BY_USER = {}
 
+def clear_model_cache(user_id: int):
+    """Clear cached models for a specific user to force refresh"""
+    global _CACHED_MODELS_BY_USER
+    if user_id in _CACHED_MODELS_BY_USER:
+        del _CACHED_MODELS_BY_USER[user_id]
+
 async def fetch_models_from_api(current_user: User):
     """Fetch models from OpenRouter and populate cache for specific user"""
     global _CACHED_MODELS_BY_USER
